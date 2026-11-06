@@ -12,7 +12,7 @@
   --faint: rgba(206, 226, 248, 0.3);
   --ease: cubic-bezier(0.16, 0.84, 0.28, 1);
   --serif: "Cormorant Garamond", "Iowan Old Style", Georgia, "Times New Roman", serif;
-  --serif-cn: "Noto Serif SC", "Songti SC", "Source Han Serif SC", "STSong", serif;
+  --serif-cn: "Songti SC", "Source Han Serif SC", "STSong", "SimSun", "宋体", serif;
 }
 
 * { box-sizing: border-box; }
