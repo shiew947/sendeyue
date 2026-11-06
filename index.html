@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Merry Christmas · 圣诞树粒子</title>
+<meta name="description" content="由三千多颗柔光粒子构成的圣诞树，缓慢旋转、细雪飘落。愿灯火长明，岁岁平安。" />
+<meta name="theme-color" content="#04070d" />
+<meta name="color-scheme" content="dark" />
+<meta property="og:title" content="Merry Christmas · 圣诞树粒子" />
+<meta property="og:description" content="由三千多颗柔光粒子构成的圣诞树，缓慢旋转、细雪飘落。" />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070d16'/%3E%3Cpath d='M16 4l3.8 8.6L28 14l-6 5.6L23.4 28 16 23.4 8.6 28 10 19.6 4 14l8.2-1.4z' fill='%23ffd98a'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=Noto+Serif+SC:wght@300&display=swap" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="aurora" aria-hidden="true">
+    <span class="blob blob--mint"></span>
+    <span class="blob blob--violet"></span>
+    <span class="blob blob--gold"></span>
+    <span class="blob blob--rose"></span>
+  </div>
+
+  <canvas id="scene" aria-hidden="true"></canvas>
+
+  <div class="grain" aria-hidden="true"></div>
+
+  <main class="stage">
+    <p class="eyebrow">Noël&nbsp;·&nbsp;2026</p>
+
+    <div class="title">
+      <h1>Merry<br /><em>Christmas</em></h1>
+      <p class="sub">愿灯火长明，岁岁平安</p>
+    </div>
+  </main>
+
+  <button id="sound" class="sound" type="button" aria-pressed="false" aria-label="开启八音盒音乐">
+    <svg class="icon icon--off" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
+      <path d="M16 9.2 21 14.8M21 9.2 16 14.8" />
+    </svg>
+    <svg class="icon icon--on" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
+      <path d="M15.2 8.6a4.8 4.8 0 0 1 0 6.8M18 6a8.4 8.4 0 0 1 0 12" />
+    </svg>
+    <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+  </button>
+
+  <p class="edge" aria-hidden="true">Winter&nbsp;·&nbsp;MMXXVI</p>
+
+  <p class="hint" id="hint">移动鼠标 · 轻点放出星火</p>
+
+  <script src="main.js"></script>
+</body>
+</html>
