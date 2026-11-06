@@ -14,6 +14,12 @@
   const TAU = Math.PI * 2;
   const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
   const easeOutCubic = (v) => 1 - Math.pow(1 - v, 3);
+  const easeInOutSine = (v) => 0.5 - 0.5 * Math.cos(Math.PI * v);
+  // 带过冲的回弹，用于"合上"时的轻微吸附感
+  const easeOutBack = (v) => {
+    const u = v - 1;
+    return 1 + 3.38 * u * u * u + 2.38 * u * u;
+  };
 
   const PALETTE = {
     snow: '238,248,255',
@@ -99,6 +105,24 @@
     return c;
   }
 
+  // 冲击波用的柔光环
+  function makeRing() {
+    const S = 512;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    const h = S / 2;
+    const grad = g.createRadialGradient(h, h, h * 0.24, h, h, h);
+    grad.addColorStop(0, 'rgba(180,255,232,0)');
+    grad.addColorStop(0.4, 'rgba(190,255,238,0.1)');
+    grad.addColorStop(0.62, 'rgba(255,255,255,0.46)');
+    grad.addColorStop(0.75, 'rgba(255,232,182,0.18)');
+    grad.addColorStop(1, 'rgba(255,214,150,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, S, S);
+    return c;
+  }
+
   const SPR = {
     snow: makeGlow(PALETTE.snow),
     mint: makeGlow(PALETTE.mint),
@@ -109,6 +133,7 @@
     rose: makeGlow(PALETTE.rose),
   };
   const FLARE = makeFlare();
+  const RING = makeRing();
 
   const SPRITE_LIST = [SPR.snow, SPR.mint, SPR.jade, SPR.pine, SPR.gold, SPR.amber, SPR.rose];
   const SPRITE_IDX = new Map(SPRITE_LIST.map((sp, i) => [sp, i]));
@@ -231,6 +256,16 @@
     for (let i = 0; i < parts.length; i++) {
       buckets[SPRITE_IDX.get(parts[i].sprite)].push(parts[i]);
     }
+
+    // 爆散字段：平时全为 0，只有触发时才填值，静止时零开销
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      p.tx = 0; p.ty = 0; p.tz = 0;
+      p.sd = 0; p.sd2 = 0; p.arc = 0;
+    }
+
+    surge.active = false;
+    surge.t = 0;
   }
 
   function buildSnow() {
@@ -380,8 +415,22 @@
       const a = p.ang + sway;
       const rad = p.rad * breathe;
 
-      const x0 = Math.cos(a) * rad;
-      const z0 = Math.sin(a) * rad;
+      // 炸开/合拢的位移：静止时 k 为 0，这段不产生任何计算
+      let ox = 0, oy = 0, oz = 0;
+      let k = 0;
+      if (surge.active) {
+        k = partK(p);
+        if (k !== 0) {
+          // 沿切线方向弯一道弧，避免直线飞散的机械感
+          const arc = Math.sin(clamp01(k) * Math.PI) * p.arc * 0.26;
+          ox = p.tx * k - Math.sin(a) * arc;
+          oz = p.tz * k + Math.cos(a) * arc;
+          oy = p.ty * k + arc * 0.3;
+        }
+      }
+
+      const x0 = Math.cos(a) * rad + ox;
+      const z0 = Math.sin(a) * rad + oz;
 
       const xr = x0 * cosR - z0 * sinR;
       const zr = x0 * sinR + z0 * cosR;
@@ -391,14 +440,15 @@
       const s = fov / d;
 
       const sx = cx + xr * s * fit;
-      const sy = cy - (p.y * s + p.z0) * fit + shiftY + (1 - ee) * 26;
+      const sy = cy - ((p.y + oy) * s + p.z0) * fit + shiftY + (1 - ee) * 26;
 
       if (sx < -80 || sx > W + 80 || sy < -80 || sy > H + 80) continue;
 
       const twk = 0.5 + 0.5 * Math.sin(time * p.tw + p.ph);
       // 远侧粒子压暗，树体才有实体感
       const depth = 0.4 + 0.6 * clamp01((s - 0.8) / 0.44);
-      let glow = p.a * (0.42 + 0.58 * twk) * ee * depth;
+      // 散开后每颗都稍微变淡，像是把光摊薄了
+      let glow = p.a * (0.42 + 0.58 * twk) * ee * depth * (1 - 0.34 * clamp01(k));
 
       // 灯串上流动的光波
       if (p.layer === 1) {
@@ -408,7 +458,7 @@
 
       if (glow <= 0.004) continue;
 
-      const sz = p.size * fit * s * (0.92 + 0.12 * twk);
+      const sz = p.size * fit * s * (0.92 + 0.12 * twk) * (1 - 0.38 * clamp01(k));
       ctx.globalAlpha = glow > 1 ? 1 : glow;
       ctx.drawImage(sprite, sx - sz * 0.5, sy - sz * 0.5, sz, sz);
       }
@@ -439,23 +489,141 @@
     if (e <= 0) return;
     const ee = easeOutCubic(e);
 
+    // 树散开时星芒几乎熄灭，合拢时重新点亮
+    const gain = surge.active ? starGain() : 1;
+    const lit = gain > 1 ? 1 : gain;
+
     const y = TREE.height / 2 + 0.075;
     const sy = cy - y * fit - my * 16;
     const pulse = 1 + Math.sin(time * 1.15) * 0.045 + Math.sin(time * 2.7) * 0.015;
-    const s = fit * 0.62 * pulse * ee;
+    const s = fit * 0.62 * pulse * ee * (0.6 + 0.4 * gain);
 
     ctx.globalCompositeOperation = 'lighter';
     ctx.save();
     ctx.translate(cx, sy);
     ctx.rotate(time * 0.035);
-    ctx.globalAlpha = 0.85 * ee;
+    ctx.globalAlpha = 0.85 * ee * lit;
     ctx.drawImage(FLARE, -s / 2, -s / 2, s, s);
     ctx.restore();
 
     // 星芒外的一层柔和光晕
-    const halo = fit * 0.9 * pulse;
-    ctx.globalAlpha = 0.3 * ee;
+    const halo = fit * 0.9 * pulse * (0.65 + 0.35 * gain);
+    ctx.globalAlpha = 0.3 * ee * lit;
     ctx.drawImage(FLARE, cx - halo / 2, sy - halo / 2, halo, halo);
+  }
+
+  /* ── 炸开又合上 ───────────────────────────────────────────────
+     一条时间轴走完四个动作：吸气蓄力 → 爆散 → 悬浮 → 合拢。
+     每颗粒子的位移 = 目标偏移 × k，k 是「离家的程度」，
+     0 = 原位，1 = 完全炸开。合拢用带过冲的缓动，落位时有吸附感。
+     ─────────────────────────────────────────────────────────── */
+  const SURGE = {
+    charge: 0.30,   // 蓄力：向内收
+    blast: 0.50,    // 单颗粒子炸开用时（要快，才有"炸"的速度感）
+    stagger: 0.30,  // 起飞错峰（要够大，树才会可见地一层层崩掉）
+    float: 0.40,    // 散开后悬停
+    reform: 0.95,   // 单颗粒子合拢用时
+    stagger2: 0.55, // 落位错峰（按高度，底部先回）
+  };
+  SURGE.blastEnd = SURGE.charge + SURGE.stagger + SURGE.blast;
+  SURGE.floatEnd = SURGE.blastEnd + SURGE.float;
+  SURGE.total = SURGE.floatEnd + SURGE.stagger2 + SURGE.reform;
+
+  const surge = { active: false, t: 0 };
+
+  // 单颗粒子当前「离家程度」
+  function partK(p) {
+    const t = surge.t;
+    if (t < SURGE.charge) return -0.08 * easeInOutSine(t / SURGE.charge);
+
+    if (t < SURGE.floatEnd) {
+      const pb = (t - SURGE.charge - p.sd) / SURGE.blast;
+      if (pb <= 0) return -0.08;
+      const q = pb >= 1 ? 1 : easeOutCubic(pb);
+      let k = -0.08 + 1.08 * q;
+      // 悬停时整片光尘轻轻浮动
+      if (t > SURGE.blastEnd - 0.28) k += 0.04 * Math.sin(time * 1.5 + p.ph);
+      return k;
+    }
+
+    const pr = (t - SURGE.floatEnd - p.sd2) / SURGE.reform;
+    if (pr <= 0) return 1;
+    if (pr >= 1) return 0;
+    return 1 - easeOutBack(pr);
+  }
+
+  // 星芒的亮度倍率：吸气时压暗，炸开瞬间爆闪，合拢时重新点亮
+  function starGain() {
+    const t = surge.t;
+    const C = SURGE.charge;
+    if (t < C) return 1 - 0.45 * (t / C);
+
+    const b = t - C;
+    if (b < 0.1) return 0.55 + 15 * b;        // 冲到 ~2.05
+    if (b < 0.55) return 2.05 - 1.95 * easeOutCubic((b - 0.1) / 0.45);
+    const f = SURGE.floatEnd - C;
+    if (b < f) return 0.1;
+    const r = (b - f) / (SURGE.total - SURGE.floatEnd);
+    if (r >= 1) return 1;
+    return 0.1 + 0.9 * easeOutBack(r);
+  }
+
+  function triggerSurge() {
+    if (reduced || surge.active) return;
+    surge.active = true;
+    surge.t = 0;
+
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      const ground = p.layer === 3;
+      const hx = Math.cos(p.ang);
+      const hz = Math.sin(p.ang);
+
+      // 底部与外圈飞得远，树顶收着些；随机取幂让多数粒子留在近处，
+      // 散开后中心仍有密度，不会变成一张均匀的星空
+      const spread = ground
+        ? 0.15 + Math.random() * 0.35
+        : (0.34 + Math.pow(Math.random(), 1.3) * 0.98) * (0.55 + 0.9 * (1 - p.u));
+
+      p.tx = hx * spread + (Math.random() - 0.5) * 0.34;
+      p.tz = hz * spread + (Math.random() - 0.5) * 0.34;
+      p.ty = ground ? (Math.random() - 0.5) * 0.3 : (Math.random() - 0.34) * 1.0;
+      p.sd = Math.random() * SURGE.stagger;
+      p.sd2 = clamp01(p.u) * SURGE.stagger2 + Math.random() * 0.07;
+      p.arc = (Math.random() - 0.5) * 2;
+    }
+
+    swell();
+  }
+
+  function drawSurge() {
+    if (!surge.active) return;
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 炸开瞬间的核心爆闪
+    const ft = (surge.t - SURGE.charge) / 0.45;
+    if (ft > 0 && ft < 1) {
+      const e = 1 - ft;
+      const sz = fit * (1.1 + 2.4 * easeOutCubic(ft));
+      ctx.globalAlpha = e * e * 0.5;
+      ctx.drawImage(FLARE, cx - sz / 2, cy - sz / 2, sz, sz);
+    }
+
+    // 向外推开的冲击波
+    const rt = (surge.t - SURGE.charge) / 1.1;
+    if (rt > 0 && rt < 1) {
+      const rad = fit * (0.42 + 1.62 * easeOutCubic(rt));
+      ctx.globalAlpha = Math.pow(1 - rt, 1.55) * 0.62;
+      ctx.drawImage(RING, cx - rad, cy - rad, rad * 2, rad * 2);
+    }
+
+    // 合拢时向内收的光环
+    const ct = (surge.t - SURGE.floatEnd) / (SURGE.total - SURGE.floatEnd);
+    if (ct > 0 && ct < 1) {
+      const rad = fit * (2.1 - 1.62 * easeOutCubic(ct));
+      ctx.globalAlpha = Math.sin(ct * Math.PI) * 0.34;
+      ctx.drawImage(RING, cx - rad, cy - rad, rad * 2, rad * 2);
+    }
   }
 
   /* ── 点击迸出的心愿星火 ───────────────────────────────────── */
@@ -505,7 +673,7 @@
     last = now;
     const dtF = dt * 60;
 
-    if (!forceHigh && raw > 0.028 && raw < 0.4) {
+    if (!forceHigh && !surge.active && raw > 0.028 && raw < 0.4) {
       if (++slowFrames > 45 && !degraded) {
         degraded = true;
         quality = 0.7;
@@ -518,6 +686,14 @@
     if (!reduced) {
       time += dt;
       baseRot += dt * 0.115;
+    }
+
+    // 爆散时间轴
+    if (reduced) {
+      surge.active = false;
+    } else if (surge.active) {
+      surge.t += dt;
+      if (surge.t >= SURGE.total) { surge.active = false; surge.t = 0; }
     }
 
     // 鼠标视差缓动
@@ -543,6 +719,7 @@
     drawSnow(time, dtF, false);
     drawTree();
     drawStar();
+    drawSurge();
     drawSparks(dtF);
     drawSnow(time, dtF, true);
 
@@ -576,7 +753,8 @@
   const BEAT = 0.44;
 
   const soundBtn = document.getElementById('sound');
-  let ac = null, master = null, wet = null;
+  const burstBtn = document.getElementById('burst');
+  let ac = null, master = null, wet = null, noiseBuf = null;
   let playing = false, noteIdx = 0, nextNoteAt = 0, schedulerId = 0;
 
   function initAudio() {
@@ -605,7 +783,40 @@
     fb.connect(delay);
     delay.connect(wet);
     wet.connect(ac.destination);
+
+    // 爆散用的噪声源，只建一次
+    const len = Math.floor(ac.sampleRate * 1.2);
+    noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
+    const ch = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+
     return true;
+  }
+
+  // 炸开时的气流声：带通滤波扫频，从低沉的"呼"到锐利的"嗤"
+  function swell() {
+    if (!ac || !noiseBuf || ac.state !== 'running' || !playing) return;
+    const t0 = ac.currentTime;
+    const src = ac.createBufferSource();
+    src.buffer = noiseBuf;
+
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 0.9;
+    bp.frequency.setValueAtTime(220, t0);
+    bp.frequency.exponentialRampToValueAtTime(3400, t0 + 0.22);
+    bp.frequency.exponentialRampToValueAtTime(600, t0 + 0.95);
+
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.0);
+
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(ac.destination);
+    src.start(t0);
+    src.stop(t0 + 1.05);
   }
 
   function bell(freq, when, dur) {
@@ -686,6 +897,19 @@
     burst(e.clientX, e.clientY);
   }, { passive: true });
 
+  if (burstBtn) {
+    burstBtn.addEventListener('click', triggerSurge);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    if (e.target.closest && e.target.closest('button')) return;
+    e.preventDefault();
+    triggerSurge();
+  });
+
   soundBtn.addEventListener('click', () => setPlaying(!playing));
 
   document.addEventListener('visibilitychange', () => {
@@ -699,4 +923,10 @@
   resize();
   buildParticles();
   requestAnimationFrame(frame);
+
+  // 控制台可手动触发：__merry.burst()
+  window.__merry = {
+    burst: triggerSurge,
+    get progress() { return surge.active ? surge.t / SURGE.total : -1; },
+  };
 })();

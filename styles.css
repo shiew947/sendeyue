@@ -209,10 +209,10 @@ h1 em {
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
-/* 声音按钮 */
-.sound {
+/* 右下角控件 */
+.sound,
+.burst {
   position: fixed;
-  right: max(clamp(18px, 3.4vw, 44px), env(safe-area-inset-right));
   bottom: max(clamp(18px, 3.4vw, 40px), env(safe-area-inset-bottom));
   z-index: 5;
   display: grid;
@@ -232,19 +232,30 @@ h1 em {
               background-color 0.35s var(--ease), transform 0.35s var(--ease);
 }
 
-.sound:hover {
+.sound {
+  right: max(clamp(18px, 3.4vw, 44px), env(safe-area-inset-right));
+}
+
+.burst {
+  right: calc(max(clamp(18px, 3.4vw, 44px), env(safe-area-inset-right)) + 56px);
+}
+
+.sound:hover,
+.burst:hover {
   color: #fff;
   border-color: rgba(255, 219, 160, 0.42);
   background: rgba(24, 36, 52, 0.55);
   transform: translateY(-1px);
 }
 
-.sound:focus-visible {
+.sound:focus-visible,
+.burst:focus-visible {
   outline: 2px solid rgba(255, 219, 160, 0.85);
   outline-offset: 3px;
 }
 
-.sound:active { transform: scale(0.96); }
+.sound:active,
+.burst:active { transform: scale(0.96); }
 
 .icon {
   width: 19px;
@@ -358,7 +369,10 @@ h1 em {
     text-align: center;
   }
   .hint { display: none; }
-  .sound { width: 42px; height: 42px; }
+  .sound, .burst { width: 42px; height: 42px; }
+  .burst {
+    right: calc(max(clamp(18px, 3.4vw, 44px), env(safe-area-inset-right)) + 50px);
+  }
 }
 
 /* 矮屏（横屏手机） */
@@ -376,5 +390,7 @@ h1 em {
   .eq i { animation: none !important; }
   .eyebrow, .title { opacity: 1; }
   .hint { opacity: 0.5; }
-  .sound { transition: none; }
+  .sound, .burst { transition: none; }
+  /* 爆散本质是大幅位移，直接不给这个入口 */
+  .burst { display: none; }
 }
